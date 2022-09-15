@@ -1,0 +1,30 @@
+[package]
+name = "speardrive"
+version = "0.1.0"
+authors = ["Dan Aloni"]
+edition = "2021"
+
+[dependencies]
+derive_builder = "~0.9"
+gitlab = "0.1311.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1" }
+chrono = "0.4"
+config = "0.10"
+thiserror = "1"
+structopt = "0.3"
+dirs = "3"
+tokio = {version = "1", features = ["rt", "process", "io-util", "rt-multi-thread"]}
+itertools = "*"
+toml = "*"
+hyper = { version = "0.14", features = ["full"] }
+serde_yaml = "0.9"
+ansi_term = "0.12"
+log = "0.4.8"
+flexi_logger = { version = "0.19", features = ["colors", "async"] }
+hyper-staticfile = "*"
+fs2 = "0.4"
+lazy_static = "*"
+regex = "*"
+sha2 = "*"
+hex = "*"

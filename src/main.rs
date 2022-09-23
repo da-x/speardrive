@@ -321,17 +321,17 @@ impl Main {
             }
         };
 
-        let mut settings = cconfig::Config::default();
+        let mut settings = cconfig::Config::builder();
         if let Some(config_path) = config_path {
-            settings
-                .merge(cconfig::File::new(
+            settings = settings
+                .add_source(cconfig::File::new(
                         config_path.to_str().ok_or_else(|| Error::ConfigFile)?,
                         cconfig::FileFormat::Yaml,
-                ))?;
+                ));
         }
-        settings.merge(cconfig::Environment::with_prefix("SPEARDRIVE_CONF_"))?;
+        settings = settings.add_source(cconfig::Environment::with_prefix("SPEARDRIVE"));
 
-        let config = settings.try_into::<Config>()?;
+        let config = settings.build()?.try_deserialize()?;
 
         if opt.dump_config {
             log::info!("{}", serde_yaml::to_string(&config)?);

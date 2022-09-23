@@ -324,7 +324,13 @@ impl Main {
             ))?
             .merge(cconfig::Environment::with_prefix("SPEARDRIVE_CONF_"))?;
 
-        Ok(settings.try_into::<Config>()?)
+        let config = settings.try_into::<Config>()?;
+
+        if opt.dump_config {
+            log::info!("{}", serde_yaml::to_string(&config)?);
+        }
+
+        Ok(config)
     }
 
     async fn run(&mut self) -> Result<(), Error> {

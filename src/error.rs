@@ -28,7 +28,7 @@ pub enum Error {
     #[error("Gitlab error; {0}")]
     GitlabError(#[from] gitlab::GitlabError),
 
-    #[error("Printed help")]
+    #[error("")]
     Help,
 
     #[error("Error in logging: {0}")]

@@ -282,12 +282,12 @@ impl Main {
                 println!(
                     "{}",
                     serde_yaml::to_string(&Config {
-                        composites_cache: PathBuf::from("x"),
+                        composites_cache: PathBuf::from("/storage/for/repo-composites"),
                         gitlabs: vec![GitlabJobArtifacts {
-                            name: "x".to_owned(),
-                            api_key: "x".to_owned(),
-                            hostname: "x".to_owned(),
-                            local_cache: PathBuf::from("x"),
+                            name: "myserver".to_owned(),
+                            api_key: "SomeAPIKEYObtainedFromGitlab".to_owned(),
+                            hostname: "git.myserver.com".to_owned(),
+                            local_cache: PathBuf::from("/storage/for/cached-job-artifacts"),
                         }]
                     })?
                 );

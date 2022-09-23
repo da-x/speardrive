@@ -303,26 +303,33 @@ impl Main {
         use ::config as cconfig;
 
         let config_path = if let Some(config) = &opt.config {
-            config.clone()
+            Some(config.clone())
         } else {
             if let Ok(path) = std::env::var("SPEARDRIVE_CONFIG_PATH") {
-                PathBuf::from(path)
+                Some(PathBuf::from(path))
             } else {
                 if let Some(dir) = dirs::config_dir() {
-                    dir.join("speardrive").join("config.toml")
+                    let file = dir.join("speardrive").join("config.yaml");
+                    if file.exists() {
+                        Some(file)
+                    } else {
+                        None
+                    }
                 } else {
-                    return Err(Error::ConfigFile);
+                    None
                 }
             }
         };
 
         let mut settings = cconfig::Config::default();
-        settings
-            .merge(cconfig::File::new(
-                config_path.to_str().ok_or_else(|| Error::ConfigFile)?,
-                cconfig::FileFormat::Yaml,
-            ))?
-            .merge(cconfig::Environment::with_prefix("SPEARDRIVE_CONF_"))?;
+        if let Some(config_path) = config_path {
+            settings
+                .merge(cconfig::File::new(
+                        config_path.to_str().ok_or_else(|| Error::ConfigFile)?,
+                        cconfig::FileFormat::Yaml,
+                ))?;
+        }
+        settings.merge(cconfig::Environment::with_prefix("SPEARDRIVE_CONF_"))?;
 
         let config = settings.try_into::<Config>()?;
 

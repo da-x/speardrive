@@ -171,10 +171,11 @@ async fn service_handle(config: Arc<Config>, req: Request<Body>) -> Result<Respo
 
     // Create composite directory
     let lock = config.composites_cache.join(format!("lock"));
-    let composite_path = config.composites_cache.join(plan.to_composite_path());
+    let node_name = plan.to_composite_path();
+    let composite_path = config.composites_cache.join(&node_name);
     let path_tmp = config
         .composites_cache
-        .join(plan.to_composite_path() + ".tmp");
+        .join(format!("{}.tmp", node_name));
 
     if !composite_path.exists() {
         log::info!("request: {}: creating composite path", uri);
@@ -193,6 +194,8 @@ async fn service_handle(config: Arc<Config>, req: Request<Body>) -> Result<Respo
 
             util::bash(format!("cp -al {cache_path} {path_tmp}/{idx}"))?;
         }
+
+        std::fs::write(path_tmp.join("url.txt"), node_name)?;
 
         match plan.kind {
             Kind::RPM => {

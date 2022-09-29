@@ -1,6 +1,6 @@
 [package]
 name = "speardrive"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["Dan Aloni"]
 edition = "2021"
 

@@ -32,19 +32,19 @@ struct Main {
     config: Config,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Plan {
     jobs: Vec<JobArtifact>,
     sub_uri: String,
     kind: Kind,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 enum Kind {
     RPM,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct JobArtifact {
     name: String,
     project: String,
@@ -56,7 +56,11 @@ impl Plan {
         use sha2::{Digest, Sha256};
 
         let mut hasher = Sha256::new();
-        let rep = format!("{:?}", self);
+        let without_suburi = Self {
+            sub_uri: "".to_owned(),
+            .. (*self).clone()
+        };
+        let rep = format!("{:?}", without_suburi);
         hasher.update(rep.as_bytes());
         let result = hasher.finalize();
 

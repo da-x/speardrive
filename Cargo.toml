@@ -5,26 +5,26 @@ authors = ["Dan Aloni"]
 edition = "2021"
 
 [dependencies]
-derive_builder = "~0.9"
-gitlab = "0.1311.2"
-serde = { version = "1", features = ["derive"] }
-serde_json = { version = "1" }
+ansi_term = "0.12"
 chrono = "0.4"
 config = { git = "https://github.com/da-x/config-rs", tag = "0.13.1-translate-key-1" }
-thiserror = "1"
-structopt = "0.3"
+derive_builder = "~0.9"
 dirs = "3"
-tokio = {version = "1", features = ["rt", "process", "io-util", "rt-multi-thread"]}
-itertools = "*"
-toml = "*"
-hyper = { version = "0.14", features = ["full"] }
-serde_yaml = "0.9"
-ansi_term = "0.12"
-log = "0.4.8"
 flexi_logger = { version = "0.19", features = ["colors", "async"] }
-hyper-staticfile = "*"
 fs2 = "0.4"
+gitlab = "0.1311.2"
+hex = "0.4"
+hyper = { version = "0.14", features = ["full"] }
+hyper-staticfile = "*"
+itertools = "*"
 lazy_static = "*"
-regex = "*"
-sha2 = "*"
-hex = "*"
+log = "0.4.8"
+regex = "1.6"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1" }
+serde_yaml = "0.9"
+sha2 = "0.10"
+structopt = "0.3"
+thiserror = "1"
+tokio = {version = "1", features = ["rt", "process", "io-util", "rt-multi-thread"]}
+toml = "0.5"

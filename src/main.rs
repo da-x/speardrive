@@ -195,6 +195,8 @@ async fn service_handle(config: Arc<Config>, req: Request<Body>) -> Result<Respo
             composite_path.display()
         );
 
+        let _ = std::fs::create_dir_all(&config.composites_cache)?;
+
         let lockfile = std::fs::File::create(&lock)?;
         lockfile.lock_exclusive()?;
 

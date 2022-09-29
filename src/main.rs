@@ -140,13 +140,13 @@ async fn service_handle(config: Arc<Config>, req: Request<Body>) -> Result<Respo
 
     for job in plan.jobs.iter() {
         if let Some(gpipe) = config.gitlabs.get(&job.name) {
-            let project_path = gpipe.local_cache.join(&job.name).join(&job.project);
+            let project_path = config.local_cache.join(&job.name).join(&job.project);
             let lock = project_path.join(format!("lock"));
             let path_tmp = project_path.join(format!("{}.tmp", job.job_id));
             let path = project_path.join(format!("{}", job.job_id));
 
             if path.exists() {
-                log::info!("request: {}: artifacts exist", uri);
+                log::info!("request: {}: artifacts {} exist", uri, path.display());
                 continue;
             }
 
@@ -163,7 +163,7 @@ async fn service_handle(config: Arc<Config>, req: Request<Body>) -> Result<Respo
         .join(format!("{}.tmp", node_name));
 
     if !composite_path.exists() {
-        log::info!("request: {}: creating composite path", uri);
+        log::info!("request: {}: creating composite path {}", uri, composite_path.display());
 
         let lockfile = std::fs::File::create(&lock)?;
         lockfile.lock_exclusive()?;
@@ -172,8 +172,8 @@ async fn service_handle(config: Arc<Config>, req: Request<Body>) -> Result<Respo
         std::fs::create_dir_all(&path_tmp)?;
 
         for (idx, job) in plan.jobs.iter().enumerate() {
-            if let Some(gpipe) = config.gitlabs.get(&job.name) {
-                let project_path = gpipe.local_cache.join(&job.project);
+            if let Some(_) = config.gitlabs.get(&job.name) {
+                let project_path = config.local_cache.join(&job.name).join(&job.project);
                 let cache_path = project_path.join(format!("{}", job.job_id));
                 let cache_path = cache_path.display();
                 let path_tmp = path_tmp.display();
@@ -270,10 +270,10 @@ impl Main {
                     "{}",
                     serde_yaml::to_string(&Config {
                         composites_cache: PathBuf::from("/storage/for/repo-composites"),
+                        local_cache: PathBuf::from("/storage/for/cached-job-artifacts"),
                         gitlabs: vec![("myserver".to_owned(), GitlabJobArtifacts {
                             api_key: "SomeAPIKEYObtainedFromGitlab".to_owned(),
                             hostname: "git.myserver.com".to_owned(),
-                            local_cache: PathBuf::from("/storage/for/cached-job-artifacts"),
                         })].into_iter().collect()
                     })?
                 );

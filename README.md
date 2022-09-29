@@ -31,11 +31,11 @@ Install after Rust toolchain with `cargo install --path .`
 
 ```
 composites-cache: /storage/for/repo-composites
+local-cache: /storage/for/cached-job-artifacts
 gitlabs:
   'myserver':
      api-key: SomeAPIKEYObtainedFromGitlab
      hostname: git.myserver.com
-     local-cache: /storage/for/cached-job-artifacts
 ```
 
 ## Command line

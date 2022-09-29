@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, collections::BTreeMap};
 
 use serde::{Deserialize, Serialize};
 
@@ -6,13 +6,12 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "kebab-case")]
 pub struct Config {
     pub composites_cache: PathBuf,
-    pub gitlabs: Vec<GitlabJobArtifacts>,
+    pub gitlabs: BTreeMap<String, GitlabJobArtifacts>,
 }
 
 #[derive(Debug, Deserialize, Clone, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct GitlabJobArtifacts {
-    pub name: String,
     pub api_key: String,
     pub hostname: String,
     pub local_cache: PathBuf,

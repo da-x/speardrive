@@ -1,4 +1,4 @@
-use std::{path::PathBuf, collections::BTreeMap};
+use std::{collections::BTreeMap, path::PathBuf};
 
 use serde::{Deserialize, Serialize};
 

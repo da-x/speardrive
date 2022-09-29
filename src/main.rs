@@ -1,14 +1,20 @@
-use std::{convert::Infallible, collections::{VecDeque, HashMap}, str::FromStr, net::{ToSocketAddrs}};
-use std::sync::Arc;
 use std::path::PathBuf;
+use std::sync::Arc;
+use std::{
+    collections::{HashMap, VecDeque},
+    convert::Infallible,
+    net::ToSocketAddrs,
+    str::FromStr,
+};
 
-use cmdline::{CommandArgs};
+use cmdline::CommandArgs;
 use error::Error;
 use fs2::FileExt;
 use gitlab::{api::AsyncQuery, AsyncGitlab, GitlabBuilder};
 use hyper::{
+    http::uri::PathAndQuery,
     service::{make_service_fn, service_fn},
-    Body, Request, Response, Uri, http::uri::PathAndQuery,
+    Body, Request, Response, Uri,
 };
 use regex::Regex;
 use structopt::StructOpt;
@@ -50,7 +56,7 @@ impl Plan {
         use sha2::{Digest, Sha256};
 
         let mut hasher = Sha256::new();
-        let rep = format!("{:?}" ,self);
+        let rep = format!("{:?}", self);
         hasher.update(rep.as_bytes());
         let result = hasher.finalize();
 
@@ -91,8 +97,10 @@ impl Plan {
                     let project = parts.into_iter().collect::<Vec<_>>().join("/");
 
                     if !RE.is_match(&project) {
-                        return Err(Error::PlanParse(
-                                format!("{} invalid project name", project)));
+                        return Err(Error::PlanParse(format!(
+                            "{} invalid project name",
+                            project
+                        )));
                     }
 
                     jobs.push(JobArtifact {
@@ -104,7 +112,11 @@ impl Plan {
             }
         }
 
-        Ok(Plan { jobs, sub_uri, kind })
+        Ok(Plan {
+            jobs,
+            sub_uri,
+            kind,
+        })
     }
 }
 
@@ -119,7 +131,11 @@ impl ClientCache {
         }
     }
 
-    async fn get(&mut self, name: &String, gpipe: &GitlabJobArtifacts) -> Result<&mut AsyncGitlab, Error> {
+    async fn get(
+        &mut self,
+        name: &String,
+        gpipe: &GitlabJobArtifacts,
+    ) -> Result<&mut AsyncGitlab, Error> {
         if !self.gitlab_clients.contains_key(name) {
             let builder = GitlabBuilder::new(&gpipe.hostname, &gpipe.api_key);
             let gitlab = builder.build_async().await?;
@@ -152,7 +168,17 @@ async fn service_handle(config: Arc<Config>, req: Request<Body>) -> Result<Respo
                 continue;
             }
 
-            cache_job_artifacts(project_path, lock, path_tmp, job, gpipe, &uri, &mut gitlab, path).await?;
+            cache_job_artifacts(
+                project_path,
+                lock,
+                path_tmp,
+                job,
+                gpipe,
+                &uri,
+                &mut gitlab,
+                path,
+            )
+            .await?;
         }
     }
 
@@ -160,12 +186,14 @@ async fn service_handle(config: Arc<Config>, req: Request<Body>) -> Result<Respo
     let lock = config.composites_cache.join(format!("lock"));
     let node_name = plan.to_composite_path();
     let composite_path = config.composites_cache.join(&node_name);
-    let path_tmp = config
-        .composites_cache
-        .join(format!("{}.tmp", node_name));
+    let path_tmp = config.composites_cache.join(format!("{}.tmp", node_name));
 
     if !composite_path.exists() {
-        log::info!("request: {}: creating composite path {}", uri, composite_path.display());
+        log::info!(
+            "request: {}: creating composite path {}",
+            uri,
+            composite_path.display()
+        );
 
         let lockfile = std::fs::File::create(&lock)?;
         lockfile.lock_exclusive()?;
@@ -274,11 +302,17 @@ impl Main {
                         listen_addr: "127.0.0.1:4444".into(),
                         composites_cache: PathBuf::from("/storage/for/repo-composites"),
                         local_cache: PathBuf::from("/storage/for/cached-job-artifacts"),
-                        gitlabs: vec![("myserver".to_owned(), GitlabJobArtifacts {
-                            api_key: "SomeAPIKEYObtainedFromGitlab".to_owned(),
-                            hostname: "git.myserver.com".to_owned(),
-                        })].into_iter().collect()
-                    })?);
+                        gitlabs: vec![(
+                            "myserver".to_owned(),
+                            GitlabJobArtifacts {
+                                api_key: "SomeAPIKEYObtainedFromGitlab".to_owned(),
+                                hostname: "git.myserver.com".to_owned(),
+                            }
+                        )]
+                        .into_iter()
+                        .collect()
+                    })?
+                );
                 return Err(Error::Help);
             }
             cmdline::Command::Serve => Ok(Self {
@@ -335,7 +369,7 @@ impl Main {
     }
 
     async fn run(&mut self) -> Result<(), Error> {
-        let addr =  match self.config.listen_addr.to_socket_addrs() {
+        let addr = match self.config.listen_addr.to_socket_addrs() {
             Ok(addr) => addr.collect::<Vec<_>>().pop().unwrap(),
             Err(err) => return Err(Error::InvalidAddress(format!("{:?}", err))),
         };

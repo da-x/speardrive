@@ -45,4 +45,7 @@ pub enum Error {
 
     #[error("Command error: {0} {1}")]
     CommandError(String, String),
+
+    #[error("Invalid address: {0}")]
+    InvalidAddress(String),
 }

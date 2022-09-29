@@ -8,6 +8,7 @@ pub struct Config {
     pub composites_cache: PathBuf,
     pub local_cache: PathBuf,
     pub gitlabs: BTreeMap<String, GitlabJobArtifacts>,
+    pub listen_addr: String,
 }
 
 #[derive(Debug, Deserialize, Clone, Serialize)]

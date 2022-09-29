@@ -1,6 +1,8 @@
-use std::{convert::Infallible, net::SocketAddr, path::PathBuf, sync::Arc, collections::{VecDeque, HashMap}, str::FromStr};
+use std::{convert::Infallible, collections::{VecDeque, HashMap}, str::FromStr, net::{ToSocketAddrs}};
+use std::sync::Arc;
+use std::path::PathBuf;
 
-use cmdline::CommandArgs;
+use cmdline::{CommandArgs};
 use error::Error;
 use fs2::FileExt;
 use gitlab::{api::AsyncQuery, AsyncGitlab, GitlabBuilder};
@@ -264,19 +266,19 @@ impl Main {
     async fn new(opt: &CommandArgs) -> Result<Self, Error> {
         logging::activate(&opt.logging, logging::empty_filter)?;
 
-        match opt.cmd {
+        match &opt.cmd {
             cmdline::Command::ExampleConf => {
                 println!(
                     "{}",
                     serde_yaml::to_string(&Config {
+                        listen_addr: "127.0.0.1:4444".into(),
                         composites_cache: PathBuf::from("/storage/for/repo-composites"),
                         local_cache: PathBuf::from("/storage/for/cached-job-artifacts"),
                         gitlabs: vec![("myserver".to_owned(), GitlabJobArtifacts {
                             api_key: "SomeAPIKEYObtainedFromGitlab".to_owned(),
                             hostname: "git.myserver.com".to_owned(),
                         })].into_iter().collect()
-                    })?
-                );
+                    })?);
                 return Err(Error::Help);
             }
             cmdline::Command::Serve => Ok(Self {
@@ -333,7 +335,10 @@ impl Main {
     }
 
     async fn run(&mut self) -> Result<(), Error> {
-        let addr = SocketAddr::from(([127, 0, 0, 1], 4444));
+        let addr =  match self.config.listen_addr.to_socket_addrs() {
+            Ok(addr) => addr.collect::<Vec<_>>().pop().unwrap(),
+            Err(err) => return Err(Error::InvalidAddress(format!("{:?}", err))),
+        };
 
         let config = Arc::new(self.config.clone());
         let make_svc = make_service_fn(move |_conn| {

@@ -30,6 +30,7 @@ Install after Rust toolchain with `cargo install --path .`
 ### Configuration
 
 ```
+listen-addr: 127.0.0.1:4444
 composites-cache: /storage/for/repo-composites
 local-cache: /storage/for/cached-job-artifacts
 gitlabs:

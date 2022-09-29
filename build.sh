@@ -33,11 +33,10 @@ _docker() {
 
     VERSION=$(grep '^version =' Cargo.toml | awk -F'"' '{print $2}')
     docker build -t alonid/speardrive:${VERSION} .
-    # docker push alonid/speardrive:${VERSION}
 }
 
 if [[ "$1" == "" ]] ; then
-    echo "build.sh docker/local"
+    echo "build.sh (docker | local)"
 else
     case $1 in
 	local) "$@" ;;

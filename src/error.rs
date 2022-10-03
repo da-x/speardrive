@@ -40,6 +40,9 @@ pub enum Error {
     #[error("Plan parse error: {0}")]
     PlanParse(String),
 
+    #[error("Unknown source: {0}")]
+    UnknownSource(String),
+
     #[error("{0}")]
     Boxed(Arc<dyn std::error::Error + Send + Sync + 'static>),
 

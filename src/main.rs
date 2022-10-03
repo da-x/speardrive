@@ -26,7 +26,7 @@ mod error;
 mod logging;
 mod util;
 
-use crate::config::{Config, GitlabJobArtifacts};
+use crate::config::{Config, GitlabJobSource, LocalPathSource};
 
 struct Main {
     config: Config,
@@ -34,7 +34,7 @@ struct Main {
 
 #[derive(Debug, Clone)]
 struct Plan {
-    jobs: Vec<JobArtifact>,
+    artifacts: Vec<Artifact>,
     sub_uri: String,
     kind: Kind,
 }
@@ -45,10 +45,22 @@ enum Kind {
 }
 
 #[derive(Debug, Clone)]
+enum Artifact {
+    GitlabJob(JobArtifact),
+    Local(LocalArtifact),
+}
+
+#[derive(Debug, Clone)]
 struct JobArtifact {
-    name: String,
+    source_name: String,
     project: String,
     job_id: u64,
+}
+
+#[derive(Debug, Clone)]
+struct LocalArtifact {
+    source_name: String,
+    key: PathBuf,
 }
 
 impl Plan {
@@ -58,7 +70,7 @@ impl Plan {
         let mut hasher = Sha256::new();
         let without_suburi = Self {
             sub_uri: "".to_owned(),
-            .. (*self).clone()
+            ..(*self).clone()
         };
         let rep = format!("{:?}", without_suburi);
         hasher.update(rep.as_bytes());
@@ -68,7 +80,7 @@ impl Plan {
     }
 
     fn from_uri(uri: &str, config: &Arc<Config>) -> Result<Plan, Error> {
-        let mut jobs = vec![];
+        let mut artifacts = vec![];
 
         let comps = uri.split("/").collect::<Vec<&str>>();
         if comps.len() <= 2 {
@@ -107,17 +119,28 @@ impl Plan {
                         )));
                     }
 
-                    jobs.push(JobArtifact {
-                        name: prefix.to_owned(),
+                    artifacts.push(Artifact::GitlabJob(JobArtifact {
+                        source_name: prefix.to_owned(),
                         project,
                         job_id: job_id.parse()?,
-                    })
+                    }))
                 }
+            } else if let Some(_) = config.local_source.get(prefix) {
+                if let Some(key) = parts.pop_back() {
+                    if key != ".." {
+                        artifacts.push(Artifact::Local(LocalArtifact {
+                            source_name: prefix.to_owned(),
+                            key: key.into(),
+                        }))
+                    }
+                }
+            } else {
+                return Err(Error::UnknownSource(prefix.into()));
             }
         }
 
         Ok(Plan {
-            jobs,
+            artifacts,
             sub_uri,
             kind,
         })
@@ -138,7 +161,7 @@ impl ClientCache {
     async fn get(
         &mut self,
         name: &String,
-        gpipe: &GitlabJobArtifacts,
+        gpipe: &GitlabJobSource,
     ) -> Result<&mut AsyncGitlab, Error> {
         if !self.gitlab_clients.contains_key(name) {
             let builder = GitlabBuilder::new(&gpipe.hostname, &gpipe.api_key);
@@ -160,29 +183,34 @@ async fn service_handle(config: Arc<Config>, req: Request<Body>) -> Result<Respo
 
     let mut gitlab = ClientCache::new();
 
-    for job in plan.jobs.iter() {
-        if let Some(gpipe) = config.gitlabs.get(&job.name) {
-            let project_path = config.local_cache.join(&job.name).join(&job.project);
-            let lock = project_path.join(format!("lock"));
-            let path_tmp = project_path.join(format!("{}.tmp", job.job_id));
-            let path = project_path.join(format!("{}", job.job_id));
+    for artifact in plan.artifacts.iter() {
+        match artifact {
+            Artifact::GitlabJob(job) => {
+                if let Some(gpipe) = config.gitlabs.get(&job.source_name) {
+                    let project_path = config.local_cache.join(&job.source_name).join(&job.project);
+                    let lock = project_path.join(format!("lock"));
+                    let path_tmp = project_path.join(format!("{}.tmp", job.job_id));
+                    let path = project_path.join(format!("{}", job.job_id));
 
-            if path.exists() {
-                log::info!("request: {}: artifacts {} exist", uri, path.display());
-                continue;
+                    if path.exists() {
+                        log::info!("request: {}: artifacts {} exist", uri, path.display());
+                        continue;
+                    }
+
+                    cache_job_artifacts(
+                        project_path,
+                        lock,
+                        path_tmp,
+                        job,
+                        gpipe,
+                        &uri,
+                        &mut gitlab,
+                        path,
+                    )
+                    .await?;
+                }
             }
-
-            cache_job_artifacts(
-                project_path,
-                lock,
-                path_tmp,
-                job,
-                gpipe,
-                &uri,
-                &mut gitlab,
-                path,
-            )
-            .await?;
+            Artifact::Local(_) => {}
         }
     }
 
@@ -207,14 +235,33 @@ async fn service_handle(config: Arc<Config>, req: Request<Body>) -> Result<Respo
         let _ = std::fs::remove_dir_all(&path_tmp);
         std::fs::create_dir_all(&path_tmp)?;
 
-        for (idx, job) in plan.jobs.iter().enumerate() {
-            if let Some(_) = config.gitlabs.get(&job.name) {
-                let project_path = config.local_cache.join(&job.name).join(&job.project);
-                let cache_path = project_path.join(format!("{}", job.job_id));
-                let cache_path = cache_path.display();
-                let path_tmp = path_tmp.display();
+        for (idx, artifact) in plan.artifacts.iter().enumerate() {
+            let path_dest = path_tmp.join(format!("{idx}"));
+            let path_dest = path_dest.display();
 
-                util::bash(format!("cp -al {cache_path} {path_tmp}/{idx}"))?;
+            match artifact {
+                Artifact::GitlabJob(job) => {
+                    if let Some(_) = config.gitlabs.get(&job.source_name) {
+                        let project_path =
+                            config.local_cache.join(&job.source_name).join(&job.project);
+                        let cache_path = project_path.join(format!("{}", job.job_id));
+                        let cache_path = cache_path.display();
+
+                        util::bash(format!(
+                            "cp -al {cache_path} {path_dest}/ || cp -a {cache_path} {path_dest}/"
+                        ))?;
+                    }
+                }
+                Artifact::Local(local) => {
+                    if let Some(local_source) = config.local_source.get(&local.source_name) {
+                        let local_path = local_source.root.join(&local.key);
+                        let local_path = local_path.display();
+
+                        util::bash(format!(
+                            "cp -al {local_path} {path_dest}/ || cp -a {local_path} {path_dest}/"
+                        ))?;
+                    }
+                }
             }
         }
 
@@ -247,7 +294,7 @@ async fn cache_job_artifacts(
     lock: PathBuf,
     path_tmp: PathBuf,
     job: &JobArtifact,
-    gpipe: &GitlabJobArtifacts,
+    gpipe: &GitlabJobSource,
     uri: &String,
     gitlab: &mut ClientCache,
     path: PathBuf,
@@ -275,7 +322,7 @@ async fn cache_job_artifacts(
     log::info!("request: {}: downloading artifacts", uri);
 
     let content = gitlab::api::raw(endpoint)
-        .query_async(gitlab.get(&job.name, gpipe).await?)
+        .query_async(gitlab.get(&job.source_name, gpipe).await?)
         .await
         .map_err(|x| Error::Boxed(Arc::new(x)))?;
     let artifacts_zip = path_tmp.join("artifacts_zip");
@@ -308,11 +355,19 @@ impl Main {
                         listen_addr: "127.0.0.1:4444".into(),
                         composites_cache: PathBuf::from("/storage/for/repo-composites"),
                         local_cache: PathBuf::from("/storage/for/cached-job-artifacts"),
+                        local_source: vec![(
+                            "local".into(),
+                            LocalPathSource {
+                                root: "/opt/repo/build-output".into(),
+                            }
+                        )]
+                        .into_iter()
+                        .collect(),
                         gitlabs: vec![(
-                            "myserver".to_owned(),
-                            GitlabJobArtifacts {
-                                api_key: "SomeAPIKEYObtainedFromGitlab".to_owned(),
-                                hostname: "git.myserver.com".to_owned(),
+                            "myserver".into(),
+                            GitlabJobSource {
+                                api_key: "SomeAPIKEYObtainedFromGitlab".into(),
+                                hostname: "git.myserver.com".into(),
                             }
                         )]
                         .into_iter()

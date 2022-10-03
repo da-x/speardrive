@@ -6,7 +6,7 @@ based on a plan from an accessed URL.
 For example:
 
 ```
-wget http://127.0.0.1:4444/myserver/foo/323/-/myserver/bar/111/-/rpm/repodata/repomd.xml
+wget http://127.0.0.1:3200/myserver/foo/323/-/myserver/bar/111/-/rpm/repodata/repomd.xml
 ```
 
 Immediately serve an RPM repo combining the RPM artifact outputs of job 323 of
@@ -17,30 +17,96 @@ project `foo` and job 111 of project `bar` from configured Gitlab server
 Highlights:
 
 * Supports Gitlab CI job artifacts.
+* Supports locally available artifacts.
 * Supports RPM repositories.
 * Downloads artifacts and caches them locally per job.
 * Caches the combination of requested repositories.
 
-
-### Installation
-
-Install after Rust toolchain with `cargo install --path .`
-
-
-### Configuration
-
-```
-listen-addr: 127.0.0.1:4444
-composites-cache: /storage/for/repo-composites
-local-cache: /storage/for/cached-job-artifacts
-gitlabs:
-  'myserver':
-     api-key: SomeAPIKEYObtainedFromGitlab
-     hostname: git.myserver.com
-```
 
 ## Command line
 
 ```
 speardrive --config-path <pathname>
 ```
+
+### URL format
+
+Repos are created when their URLs are accessed, and the URLs define the read-only
+content of the repos.
+
+`<source-spec-a>/-/<source-spec-b>/-/.../<repo-type>`
+
+Where `<source-spec>` can be:
+
+* `<gitlab-source-name>/<project-id>/<job-id>`
+* `<local-source-name>/<dirname>`
+
+And `<repo-type>` can be:
+
+* `rpm` - Use `createrepo_c` to create local repositories
+
+
+### Configuration
+
+Two types of sources are supported:
+
+ * Gitlab job artifacts
+ * A flat local directory
+
+```
+listen-addr: 127.0.0.1:3200
+composites-cache: /storage/for/repo-composites
+local-cache: /storage/for/cached-job-artifacts
+gitlabs:
+  'myserver':
+     api-key: SomeAPIKEYObtainedFromGitlab
+     hostname: git.myserver.com
+local-source:
+  local:
+    root: /home/user/builds
+```
+
+## Deployment example
+
+Prebuilt images are available from dockerhub.
+
+Example deployment script:
+```
+# Cleanup previous instance
+docker rm -f speardrive 2>/dev/null
+
+# Start new instance
+docker run \
+        --name speardrive \
+        --network host \
+        --user $(id -u):$(id -g) \
+        --log-driver local --log-opt max-size=10m \
+        -v /storage/speardrive:/storage/speardrive \
+        -v $(pwd)/speardrive.yaml:/dist/config.yaml \
+        -d "$@" \
+        alonid/speardrive:0.1.4 /dist/speardrive \
+        -c /dist/config.yaml  \
+        serve
+```
+
+## Example nginx location config
+
+The following assumes a spawned speardrive instance that listens on
+`127.0.0.1:3200`. You can serve it under a prefix using your existing nginx
+instance. For example:
+
+```
+location  /speardrive {
+    rewrite /speardrive/(.*) /$1  break;
+    proxy_pass         http://localhost:3200;
+    proxy_redirect     off;
+    proxy_set_header   Host $host;
+}
+```
+
+
+### Building from source
+
+If you don't want to use the prebuilt docker image, you can build speardrive by
+yourself using Rust. With the Rust toolchain installed, run `cargo install
+--path .`

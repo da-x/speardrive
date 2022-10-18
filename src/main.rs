@@ -265,7 +265,7 @@ async fn service_handle(config: Arc<Config>, req: Request<Body>) -> Result<Respo
             }
         }
 
-        std::fs::write(path_tmp.join("url.txt"), node_name)?;
+        std::fs::write(path_tmp.join("url.txt"), uri)?;
 
         match plan.kind {
             Kind::RPM => {

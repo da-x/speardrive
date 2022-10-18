@@ -84,7 +84,7 @@ docker run \
         -v /storage/speardrive:/storage/speardrive \
         -v $(pwd)/speardrive.yaml:/dist/config.yaml \
         -d "$@" \
-        alonid/speardrive:0.1.5 /dist/speardrive \
+        alonid/speardrive:0.1.6 /dist/speardrive \
         -c /dist/config.yaml  \
         serve
 ```

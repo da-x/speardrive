@@ -18,7 +18,8 @@ Highlights:
 
 * Supports Gitlab CI job artifacts.
 * Supports locally available artifacts.
-* Supports RPM repositories.
+* Supports remotely available from URLs.
+* Supports generating RPM repositories.
 * Downloads artifacts and caches them locally per job.
 * Caches the combination of requested repositories.
 
@@ -40,6 +41,7 @@ Where `<source-spec>` can be:
 
 * `<gitlab-source-name>/<project-id>/<job-id>`
 * `<local-source-name>/<dirname>`
+* `<remote-static-name>/<dirname>`
 
 And `<repo-type>` can be:
 
@@ -64,7 +66,17 @@ gitlabs:
 local-source:
   local:
     root: /home/user/builds
+remote-static:
+  remote:
+    base-url: https://some_static_site/suburl
 ```
+
+## Static remotes
+
+For each `<remote-static-name>/<dirname>`, we will use the `<base_url>/<dirname>/list.txt` as
+the list of files to download under `<base_url>/<dirname>`. This list can be generated
+using `find -type f`.
+
 
 ## Deployment example
 

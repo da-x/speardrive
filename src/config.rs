@@ -13,6 +13,9 @@ pub struct Config {
     pub gitlabs: BTreeMap<String, GitlabJobSource>,
 
     #[serde(default)]
+    pub remote_source: BTreeMap<String, RemoteSource>,
+
+    #[serde(default)]
     pub local_source: BTreeMap<String, LocalPathSource>,
 }
 
@@ -21,6 +24,12 @@ pub struct Config {
 pub struct GitlabJobSource {
     pub api_key: String,
     pub hostname: String,
+}
+
+#[derive(Debug, Deserialize, Clone, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct RemoteSource {
+    pub base_url: String,
 }
 
 #[derive(Debug, Deserialize, Clone, Serialize)]

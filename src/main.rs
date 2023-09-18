@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{PathBuf, Path};
 use std::sync::Arc;
 use std::{
     collections::{HashMap, VecDeque},
@@ -11,6 +11,7 @@ use cmdline::CommandArgs;
 use error::Error;
 use fs2::FileExt;
 use gitlab::{api::AsyncQuery, AsyncGitlab, GitlabBuilder};
+use hyper::StatusCode;
 use hyper::{
     http::uri::PathAndQuery,
     service::{make_service_fn, service_fn},
@@ -26,7 +27,7 @@ mod error;
 mod logging;
 mod util;
 
-use crate::config::{Config, GitlabJobSource, LocalPathSource};
+use crate::config::{Config, GitlabJobSource, LocalPathSource, RemoteSource};
 
 struct Main {
     config: Config,
@@ -48,6 +49,7 @@ enum Kind {
 enum Artifact {
     GitlabJob(JobArtifact),
     Local(LocalArtifact),
+    Remote(StaticRemoteArtifact),
 }
 
 #[derive(Debug, Clone)]
@@ -61,6 +63,12 @@ struct JobArtifact {
 struct LocalArtifact {
     source_name: String,
     key: PathBuf,
+}
+
+#[derive(Debug, Clone)]
+struct StaticRemoteArtifact {
+    source_name: String,
+    subpath: String,
 }
 
 impl Plan {
@@ -108,6 +116,9 @@ impl Plan {
                 continue;
             }
 
+            // For sanity, remove parts that can be '..'.
+            let mut parts: VecDeque<_> = parts.into_iter().filter(|x| *x != "..").collect();
+
             if let Some(_) = config.gitlabs.get(prefix) {
                 if let Some(job_id) = parts.pop_back() {
                     let project = parts.into_iter().collect::<Vec<_>>().join("/");
@@ -134,6 +145,11 @@ impl Plan {
                         }))
                     }
                 }
+            } else if let Some(_) = config.remote_source.get(prefix) {
+                artifacts.push(Artifact::Remote(StaticRemoteArtifact {
+                    subpath: parts.into_iter().collect::<Vec<_>>().join("/"),
+                    source_name: prefix.to_owned(),
+                }))
             } else {
                 return Err(Error::UnknownSource(prefix.into()));
             }
@@ -197,11 +213,11 @@ async fn service_handle(config: Arc<Config>, req: Request<Body>) -> Result<Respo
                         continue;
                     }
 
-                    cache_job_artifacts(
+                    cache_gitlab_job_artifacts(
                         project_path,
                         lock,
                         path_tmp,
-                        job,
+                        &job,
                         gpipe,
                         &uri,
                         &mut gitlab,
@@ -210,6 +226,30 @@ async fn service_handle(config: Arc<Config>, req: Request<Body>) -> Result<Respo
                     .await?;
                 }
             }
+            Artifact::Remote(sra) => {
+                if let Some(sr) = config.remote_source.get(&sra.source_name) {
+                    let orig_path = config.local_cache.join(&sra.source_name);
+                    let lock = orig_path.join(format!("lock"));
+                    let path_tmp = orig_path.join(format!("{}.tmp", sra.subpath));
+                    let path = orig_path.join(format!("{}", sra.subpath));
+
+                    if path.exists() {
+                        log::info!("request: {}: static remote copy {} exist", uri, path.display());
+                        continue;
+                    }
+
+                    cache_static_remote_artifact(
+                        orig_path,
+                        lock,
+                        path_tmp,
+                        &sra,
+                        sr,
+                        &uri,
+                        path,
+                    )
+                    .await?;
+                }
+            },
             Artifact::Local(_) => {}
         }
     }
@@ -239,29 +279,37 @@ async fn service_handle(config: Arc<Config>, req: Request<Body>) -> Result<Respo
             let path_dest = path_tmp.join(format!("{idx}"));
             let path_dest = path_dest.display();
 
-            match artifact {
+            let artifact_path = match artifact {
                 Artifact::GitlabJob(job) => {
                     if let Some(_) = config.gitlabs.get(&job.source_name) {
                         let project_path =
                             config.local_cache.join(&job.source_name).join(&job.project);
-                        let cache_path = project_path.join(format!("{}", job.job_id));
-                        let cache_path = cache_path.display();
-
-                        util::bash(format!(
-                            "cp -al {cache_path} {path_dest}/ || cp -a {cache_path} {path_dest}/"
-                        ))?;
+                        Some(project_path.join(format!("{}", job.job_id)))
+                    } else {
+                        None
                     }
                 }
                 Artifact::Local(local) => {
                     if let Some(local_source) = config.local_source.get(&local.source_name) {
-                        let local_path = local_source.root.join(&local.key);
-                        let local_path = local_path.display();
-
-                        util::bash(format!(
-                            "cp -al {local_path} {path_dest}/ || cp -a {local_path} {path_dest}/"
-                        ))?;
+                        Some(local_source.root.join(&local.key))
+                    } else {
+                        None
                     }
                 }
+                Artifact::Remote(remote) => {
+                    if let Some(local_source) = config.local_source.get(&remote.source_name) {
+                        Some(local_source.root.join(&remote.subpath))
+                    } else {
+                        None
+                    }
+                }
+            };
+
+            if let Some(artifact_path) = artifact_path {
+                let artifact_path = artifact_path.display();
+                util::bash(format!(
+                        "cp -al {artifact_path} {path_dest}/ || cp -a {artifact_path} {path_dest}/"
+                ))?;
             }
         }
 
@@ -277,7 +325,7 @@ async fn service_handle(config: Arc<Config>, req: Request<Body>) -> Result<Respo
         std::fs::rename(path_tmp, &composite_path)?;
     }
 
-    let static_ = hyper_staticfile::Static::new(composite_path);
+    let static_ = hyper_staticfile::Static::new(&composite_path);
 
     let mut req = req;
     let mut parts = req.uri().clone().into_parts();
@@ -286,10 +334,25 @@ async fn service_handle(config: Arc<Config>, req: Request<Body>) -> Result<Respo
     }
     *req.uri_mut() = Uri::from_parts(parts)?;
 
+    log::info!("request: serving from {}/{}", composite_path.display(), req.uri());
+
     Ok(static_.serve(req).await?)
 }
 
-async fn cache_job_artifacts(
+async fn service_handle_wrapper(config: Arc<Config>, req: Request<Body>) -> Result<Response<Body>, Error> {
+    let uri = req.uri().to_string();
+    match service_handle(config, req).await {
+        Ok(v) => Ok(v),
+        Err(err) => {
+            log::error!("request: {}, failed: {}", uri, err);
+            let mut rsp = Response::new(Body::from(format!("{:?}", err)));
+            *rsp.status_mut() = StatusCode::BAD_REQUEST;
+            Ok(rsp)
+        },
+    }
+}
+
+async fn cache_gitlab_job_artifacts(
     project_path: PathBuf,
     lock: PathBuf,
     path_tmp: PathBuf,
@@ -343,6 +406,58 @@ async fn cache_job_artifacts(
     Ok(())
 }
 
+async fn cache_static_remote_artifact(
+    orig_path: PathBuf,
+    lock: PathBuf,
+    path_tmp: PathBuf,
+    sra: &StaticRemoteArtifact,
+    sr: &RemoteSource,
+    uri: &String,
+    path: PathBuf,
+) -> Result<(), Error> {
+    std::fs::create_dir_all(&orig_path)?;
+
+    let lockfile = std::fs::File::create(&lock)?;
+    lockfile.lock_exclusive()?;
+
+    log::info!("request: {}: querying SRA {:?} of static remote {:?}", uri, sra, sr);
+
+    let _ = std::fs::remove_dir_all(&path_tmp);
+    std::fs::create_dir_all(&path_tmp)?;
+
+    log::info!("request: {}: downloading SRA into {:?}", uri, path_tmp.display());
+
+    let list_url = format!("{}/{}/list.txt", &sr.base_url, sra.subpath);
+    let list_txt = reqwest::get(&list_url).await?.text().await?;
+
+    for line in list_txt.lines() {
+        // Sanitize the line
+        let parts: Vec<_> = line.split("/").into_iter()
+            .filter(|x| *x != "..")
+            .skip_while(|x| *x == "").collect();
+        let line = parts.join("/");
+        let local_path = path_tmp.join(Path::new(&line));
+
+        // Make sure the parent dir exists
+        if let Some(parent) = local_path.parent() {
+            if !parent.exists() {
+                std::fs::create_dir_all(parent)?;
+            }
+        }
+
+        // Download the file and write it
+        let file_url = format!("{}/{}/{}", &sr.base_url, sra.subpath, line);
+        log::info!("request: {}: downloading {}", uri, file_url);
+        let content = reqwest::get(&file_url).await?.bytes().await?;
+        tokio::fs::write(local_path, content).await?;
+    }
+
+    log::info!("request: {}: placing SRA", uri);
+    std::fs::rename(path_tmp, path)?;
+
+    Ok(())
+}
+
 impl Main {
     async fn new(opt: &CommandArgs) -> Result<Self, Error> {
         logging::activate(&opt.logging, logging::empty_filter)?;
@@ -363,6 +478,7 @@ impl Main {
                         )]
                         .into_iter()
                         .collect(),
+                        remote_source: vec![].into_iter().collect(),
                         gitlabs: vec![(
                             "myserver".into(),
                             GitlabJobSource {
@@ -438,7 +554,7 @@ impl Main {
         let config = Arc::new(self.config.clone());
         let make_svc = make_service_fn(move |_conn| {
             let config = config.clone();
-            let service_handler = move |req| service_handle(config.clone(), req);
+            let service_handler = move |req| service_handle_wrapper(config.clone(), req);
             async move { Ok::<_, Infallible>(service_fn(service_handler)) }
         });
         let bound = hyper::Server::bind(&addr);

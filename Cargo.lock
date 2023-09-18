@@ -1595,7 +1595,7 @@ dependencies = [
 
 [[package]]
 name = "speardrive"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "ansi_term",
  "chrono",
@@ -1612,6 +1612,7 @@ dependencies = [
  "lazy_static",
  "log",
  "regex",
+ "reqwest",
  "serde",
  "serde_json",
  "serde_yaml",

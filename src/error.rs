@@ -51,4 +51,7 @@ pub enum Error {
 
     #[error("Invalid address: {0}")]
     InvalidAddress(String),
+
+    #[error("Reqwest: {0}")]
+    Reqwest(#[from] reqwest::Error),
 }

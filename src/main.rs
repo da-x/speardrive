@@ -297,8 +297,9 @@ async fn service_handle(config: Arc<Config>, req: Request<Body>) -> Result<Respo
                     }
                 }
                 Artifact::Remote(remote) => {
-                    if let Some(local_source) = config.local_source.get(&remote.source_name) {
-                        Some(local_source.root.join(&remote.subpath))
+                    if let Some(_) = config.remote_source.get(&remote.source_name) {
+                        let cache_path = config.local_cache.join(&remote.source_name);
+                        Some(cache_path.join(&remote.subpath))
                     } else {
                         None
                     }

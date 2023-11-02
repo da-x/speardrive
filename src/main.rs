@@ -429,7 +429,14 @@ async fn cache_static_remote_artifact(
     log::info!("request: {}: downloading SRA into {:?}", uri, path_tmp.display());
 
     let list_url = format!("{}/{}/list.txt", &sr.base_url, sra.subpath);
-    let list_txt = reqwest::get(&list_url).await?.text().await?;
+    let rsp = reqwest::get(&list_url).await?;
+    if !rsp.status().is_success() {
+        return Err(Error::PlanParse(format!(
+            "error downloading list.txt: {:?}", rsp.status()
+        )));
+    }
+
+    let list_txt = rsp.text().await?;
 
     for line in list_txt.lines() {
         // Sanitize the line
@@ -449,7 +456,14 @@ async fn cache_static_remote_artifact(
         // Download the file and write it
         let file_url = format!("{}/{}/{}", &sr.base_url, sra.subpath, line);
         log::info!("request: {}: downloading {}", uri, file_url);
-        let content = reqwest::get(&file_url).await?.bytes().await?;
+        let rsp = reqwest::get(&file_url).await?;
+        if !rsp.status().is_success() {
+            return Err(Error::PlanParse(format!(
+                "error downloading {}: {:?}", file_url, rsp.status()
+            )));
+        }
+
+        let content = rsp.bytes().await?;
         tokio::fs::write(local_path, content).await?;
     }
 

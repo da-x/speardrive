@@ -432,7 +432,7 @@ async fn cache_static_remote_artifact(
     let rsp = reqwest::get(&list_url).await?;
     if !rsp.status().is_success() {
         return Err(Error::PlanParse(format!(
-            "error downloading list.txt: {:?}", rsp.status()
+            "error downloading {}: {:?}", list_url, rsp.status()
         )));
     }
 
